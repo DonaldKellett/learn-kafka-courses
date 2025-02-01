@@ -35,15 +35,15 @@ public class BasicStreams {
         KStream<String, String> firstStream = builder.stream(inputTopic, Consumed.with(Serdes.String(), Serdes.String()));
 
         firstStream.peek((key, value) -> System.out.println("Incoming record - key " + key + " value " + value))
-                // filter records by making sure they contain the orderNumberStart variable from above HINT: use filter
-		.filter((key, value) -> value.contains(orderNumberStart))
-                // map the value to a new string by removing the orderNumberStart portion HINT: use mapValues
-		.mapValues(value -> value.substring(value.indexOf("-") + 1))
-                // only forward records where the value is 1000 or greater HINT: use filter and Long.parseLong
-		.filter((key, value) -> Long.parseLong(value) > 1000)
-                .peek((key, value) -> System.out.println("Outgoing record - key " + key + " value " + value))
-                // Write the results to an output topic defined above as outputTopic HINT: use "to" and Produced and Serdes.String()
-		.to(outputTopic, Produced.with(Serdes.String(), Serdes.String()));
+            // filter records by making sure they contain the orderNumberStart variable from above HINT: use filter
+            .filter((key, value) -> value.contains(orderNumberStart))
+            // map the value to a new string by removing the orderNumberStart portion HINT: use mapValues
+            .mapValues(value -> value.substring(value.indexOf("-") + 1))
+            // only forward records where the value is 1000 or greater HINT: use filter and Long.parseLong
+            .filter((key, value) -> Long.parseLong(value) > 1000)
+            .peek((key, value) -> System.out.println("Outgoing record - key " + key + " value " + value))
+            // Write the results to an output topic defined above as outputTopic HINT: use "to" and Produced and Serdes.String()
+            .to(outputTopic, Produced.with(Serdes.String(), Serdes.String()));
 
         try (KafkaStreams kafkaStreams = new KafkaStreams(builder.build(), streamsProps)) {
             final CountDownLatch shutdownLatch = new CountDownLatch(1);
