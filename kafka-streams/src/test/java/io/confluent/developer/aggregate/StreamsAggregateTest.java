@@ -44,23 +44,23 @@ public class StreamsAggregateTest {
 
         final StreamsBuilder builder = new StreamsBuilder();
         final KStream<String, ElectronicOrder> electronicStream =
-                builder.stream(inputTopicName, Consumed.with(Serdes.String(), electronicSerde));
+                builder.stream(inputTopicName, Consumed.with(stringSerde, electronicSerde));
 
         electronicStream.groupByKey().aggregate(() -> 0.0,
                 (key, order, total) -> total + order.getPrice(),
                 Materialized.with(stringSerde, doubleSerde))
-                .toStream().to(outputTopicName, Produced.with(Serdes.String(), Serdes.Double()));
+                .toStream().to(outputTopicName, Produced.with(stringSerde, doubleSerde));
 
            // Need to create the TopologyTestDriver instance
            // You'll need a Topology and properties HINT: StreamBuilder.build() and streamsProps
            // You always want to use a TopologyTestDriver in a try-with-resources block to make sure
            // gets closed properly which will ensure any local state is cleaned up
-        try (final TopologyTestDriver testDriver = null) {
+        try (final TopologyTestDriver testDriver = new TopologyTestDriver(builder.build(), streamsProps)) {
             // Complete the TestInputTopic HINT: it needs a topic name and serializers for the key and value
-            final TestInputTopic<String, ElectronicOrder> inputTopic = null;
+            final TestInputTopic<String, ElectronicOrder> inputTopic = testDriver.createInputTopic(inputTopicName, stringSerde.serializer(), electronicSerde.serializer());
 
             // Complete the TestOutputTopic HINT: it needs a topic name and deserializers for the key and value
-            final TestOutputTopic<String, Double> outputTopic =  null;
+            final TestOutputTopic<String, Double> outputTopic =  testDriver.createOutputTopic(outputTopicName, stringSerde.deserializer(), doubleSerde.deserializer());
 
             // Mock records for the test
             final List<ElectronicOrder> orders = new ArrayList<>();
@@ -74,11 +74,13 @@ public class StreamsAggregateTest {
 
             // Run the mock records through the topology HINT use the inputTopic above
             // and pipe each record through make sure to use the key of the order
+            orders.forEach(order -> inputTopic.pipeInput(order.getElectronicId(), order));
 
             // Read the values from the topology HINT use the outputTopic to read all values as list
-            List<Double> actualValues = null;
+            List<Double> actualValues = outputTopic.readValuesToList();
             // assert the actualValues return matches the expected values
             // HINT assertEquals(expected, actual);
+            assertEquals(expectedValues, actualValues);
         }
 
     }
