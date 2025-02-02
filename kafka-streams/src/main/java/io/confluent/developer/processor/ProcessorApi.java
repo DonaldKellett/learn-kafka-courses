@@ -46,22 +46,42 @@ public class ProcessorApi {
                 @Override
                 public void init(ProcessorContext<String, Double> context) {
                     // Save reference of the context
+                    this.context = context;
                     // Retrieve the store and save a reference
+                    this.store = context.getStateStore(storeName);
                     // Schedule a punctuation  HINT: use context.schedule and the method you want to call is forwardAll
+                    context.schedule(Duration.ofSeconds(30), PunctuationType.STREAM_TIME, this::forwardAll);
                 }
 
                 private void forwardAll(final long timestamp) {
                     // Get a KeyValueIterator HINT there's a method on the KeyValueStore
                     // Don't forget to close the iterator! HINT use try-with resources
                     // Iterate over the records and create a Record instance and forward downstream HINT use a method on the ProcessorContext to forward
+                    try (KeyValueIterator<String, Double> iterator = store.all()) {
+                        while (iterator.hasNext()) {
+                            KeyValue<String, Double> kv = iterator.next();
+                            Record<String, Double> record = new Record<>(kv.key, kv.value, timestamp);
+                            context.forward(record);
+                            System.out.println(String.format("Punctuation forwarded record - key %s value %f", record.key(), record.value()));
+                        }
+                    }
                 }
 
                 @Override
                 public void process(Record<String, ElectronicOrder> record) {
                     // Get the current total from the store HINT: use the key on the record
+                    String key = record.key();
+                    Double currentTotal = store.get(key);
                     // Don't forget to check for null
+                    if (currentTotal == null) {
+                        currentTotal = 0.0;
+                    }
                     // Add the price from the value to the current total from store and put it in the store
                     // HINT state stores are key-value stores
+                    Double price = record.value().getPrice();
+                    Double newTotal = currentTotal + price;
+                    store.put(key, newTotal);
+                    System.out.println(String.format("Processed incoming record - key %s value %s", key, record.value()));
                 }
             };
         }
@@ -94,15 +114,26 @@ public class ProcessorApi {
 
         // Add a source node to the topology  HINT: topology.addSource
         // Give it a name, add deserializers for the key and the value and provide the input topic name
+        topology.addSource("source-node",
+            stringSerde.deserializer(),
+            electronicSerde.deserializer(),
+            inputTopic);
 
         // Now add a processor to the topology HINT topology.addProcessor
         // You'll give it a name, add a processor supplier HINT: a new instance and provide the store name
         // You'll also provide a parent name HINT: it's the name you used for the source node
+        topology.addProcessor("processor-node",
+            new TotalPriceOrderProcessorSupplier(storeName),
+            "source-node");
 
         // Finally, add a sink node HINT topology.addSink
         // As before give it a name, the output topic name, serializers for the key and value HINT: string and double
         // and the name of the parent node HINT it's the name you gave the processor
-
+        topology.addSink("sink-node",
+            outputTopic,
+            stringSerde.serializer(),
+            doubleSerde.serializer(),
+            "processor-node");
 
         try (KafkaStreams kafkaStreams = new KafkaStreams(topology, streamsProps)) {
             final CountDownLatch shutdownLatch = new CountDownLatch(1);
