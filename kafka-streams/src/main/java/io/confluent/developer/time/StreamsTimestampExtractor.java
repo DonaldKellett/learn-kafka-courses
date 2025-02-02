@@ -29,8 +29,8 @@ public class StreamsTimestampExtractor {
         public long extract(ConsumerRecord<Object, Object> record, long partitionTime) {
             // Extract the timestamp from the value in the record
             // and return that instead
-            return -1L;
-
+            ElectronicOrder order = (ElectronicOrder)record.value();
+            return order.getTime();
         }
     }
 
@@ -48,10 +48,11 @@ public class StreamsTimestampExtractor {
                 StreamsUtils.getSpecificAvroSerde(configMap);
 
         final KStream<String, ElectronicOrder> electronicStream =
-                builder.stream(inputTopic,
-                                Consumed.with(Serdes.String(), electronicSerde))
-                        //Wire up the timestamp extractor HINT do it on the Consumed object vs configs
-                        .peek((key, value) -> System.out.println("Incoming record - key " + key + " value " + value));
+            builder.stream(inputTopic,
+                Consumed.with(Serdes.String(), electronicSerde)
+                //Wire up the timestamp extractor HINT do it on the Consumed object vs configs
+                    .withTimestampExtractor(new OrderTimestampExtractor()))
+                .peek((key, value) -> System.out.println("Incoming record - key " + key + " value " + value));
 
         electronicStream.groupByKey().windowedBy(TimeWindows.of(Duration.ofHours(1)))
                 .aggregate(() -> 0.0,
