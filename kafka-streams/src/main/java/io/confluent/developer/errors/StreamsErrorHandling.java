@@ -36,12 +36,14 @@ public class StreamsErrorHandling {
                                                      Exception exception) {
             // This return null statement is here so the code will compile
             // You need to replace it with some logic described below
-            return null;
+            // return null;
             // If the number of errors remain under 25 continue processing
             // Otherwise fail
             // Note in both cases you'll return a DeserializationHandlerResponse ENUM
             // To achieve the desired behavior
-
+            return errorCounter++ < 25 ?
+                DeserializationHandlerResponse.CONTINUE :
+                DeserializationHandlerResponse.FAIL;
         }
 
         @Override
@@ -55,10 +57,13 @@ public class StreamsErrorHandling {
                                                          Exception exception) {
             // This return null statement is here so the code will compile
             // You need to replace it with some logic described below
-            return null;
+            // return null;
             // If the exception type is RecordTooLargeException continue working
             // Otherwise fail
             // Note in both cases you'll return a ProductionExceptionHandlerResponse ENUM
+            return exception instanceof RecordTooLargeException ?
+                ProductionExceptionHandlerResponse.CONTINUE :
+                ProductionExceptionHandlerResponse.FAIL;
         }
 
         @Override
@@ -71,7 +76,7 @@ public class StreamsErrorHandling {
         public StreamThreadExceptionResponse handle(Throwable exception) {
             // This return null statement is here so the code will compile
             // You need to replace it with some logic described below
-            return null;
+            // return null;
 
             // Check if the exception is a StreamsException
             // If it is - get the underlying Throwable HINT: exception.getCause()
@@ -79,6 +84,10 @@ public class StreamsErrorHandling {
             // If it does, replace the thread
             // Otherwise shutdown the client
             // Note in both cases return a StreamThreadExceptionResponse ENUM
+            return exception instanceof StreamsException &&
+                exception.getCause().getMessage().equals("Retryable transient error") ?
+                StreamThreadExceptionResponse.REPLACE_THREAD :
+                StreamThreadExceptionResponse.SHUTDOWN_CLIENT;                
         }
     }
 
@@ -91,8 +100,8 @@ public class StreamsErrorHandling {
         // HINT: look in StreamsConfig for Deserialization and Production to get the correct
         // static string configuration names
 
-        streamsProps.put("????", null);
-        streamsProps.put("???", null);
+        streamsProps.put(StreamsConfig.DEFAULT_DESERIALIZATION_EXCEPTION_HANDLER_CLASS_CONFIG, StreamsDeserializationErrorHandler.class);
+        streamsProps.put(StreamsConfig.DEFAULT_PRODUCTION_EXCEPTION_HANDLER_CLASS_CONFIG, StreamsRecordProducerErrorHandler.class);
 
         StreamsBuilder builder = new StreamsBuilder();
         final String inputTopic = streamsProps.getProperty("error.input.topic");
