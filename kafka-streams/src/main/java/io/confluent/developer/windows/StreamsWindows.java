@@ -12,6 +12,7 @@ import org.apache.kafka.streams.kstream.Consumed;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.Materialized;
 import org.apache.kafka.streams.kstream.Produced;
+import org.apache.kafka.streams.kstream.Suppressed;
 import org.apache.kafka.streams.kstream.TimeWindows;
 
 import java.io.IOException;
@@ -43,17 +44,20 @@ public class StreamsWindows {
                         .peek((key, value) -> System.out.println("Incoming record - key " + key + " value " + value));
 
         electronicStream.groupByKey()
-                // Window the aggregation by the hour and allow for records to be up 5 minutes late
-                .aggregate(() -> 0.0,
-                        (key, order, total) -> total + order.getPrice(),
-                        Materialized.with(Serdes.String(), Serdes.Double()))
-                // Don't emit results until the window closes HINT suppression
-                .toStream()
-                // When windowing Kafka Streams wraps the key in a Windowed class
-                // After converting the table to a stream it's a good idea to extract the
-                // Underlying key from the Windowed instance HINT: use map 
-                .peek((key, value) -> System.out.println("Outgoing record - key " + key + " value " + value))
-                .to(outputTopic, Produced.with(Serdes.String(), Serdes.Double()));
+            // Window the aggregation by the hour and allow for records to be up 5 minutes late
+            .windowedBy(TimeWindows.of(Duration.ofHours(1)).grace(Duration.ofMinutes(5)))
+            .aggregate(() -> 0.0,
+                (key, order, total) -> total + order.getPrice(),
+                Materialized.with(Serdes.String(), Serdes.Double()))
+            // Don't emit results until the window closes HINT suppression
+            .suppress(Suppressed.untilWindowCloses(Suppressed.BufferConfig.unbounded()))
+            .toStream()
+            // When windowing Kafka Streams wraps the key in a Windowed class
+            // After converting the table to a stream it's a good idea to extract the
+            // Underlying key from the Windowed instance HINT: use map
+            .map((wk, v) -> new KeyValue<>(wk.key(), v))
+            .peek((key, value) -> System.out.println("Outgoing record - key " + key + " value " + value))
+            .to(outputTopic, Produced.with(Serdes.String(), Serdes.Double()));
 
         try (KafkaStreams kafkaStreams = new KafkaStreams(builder.build(), streamsProps)) {
             final CountDownLatch shutdownLatch = new CountDownLatch(1);
